@@ -1,0 +1,570 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>FICH 2026 — Schedule Planner</title>
+  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700;800&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet" />
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --sidebar-w: 320px;
+      --col-time: 56px;
+      --row-h: 20px;           /* height of one 30-min slot */
+      --header-h: 36px;
+      --start-hour: 7;         /* grid starts at 07:00 */
+      --slots: 32;             /* 07:00 – 23:00 = 32 half-hour slots */
+
+      --bg: #0f1117;
+      --surface: #181c27;
+      --surface2: #1e2233;
+      --border: rgba(255,255,255,0.07);
+      --border-strong: rgba(255,255,255,0.14);
+      --text: #e8eaf0;
+      --muted: #6b7280;
+      --accent: #4f8ef7;
+      --danger: #f04f55;
+      --danger-bg: rgba(240,79,85,0.12);
+
+      --c-english:   #334155;
+      --c-prog:      #c2410c;
+      --c-chem:      #065f46;
+      --c-math:      #1d4ed8;
+    }
+
+    html, body { height: 100%; overflow: hidden; }
+    body {
+      font-family: 'DM Sans', sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      display: flex;
+    }
+
+    /* ── SIDEBAR ── */
+    #sidebar {
+      width: var(--sidebar-w);
+      min-width: var(--sidebar-w);
+      background: var(--surface);
+      border-right: 1px solid var(--border);
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+    }
+
+    .sidebar-head {
+      padding: 22px 20px 18px;
+      border-bottom: 1px solid var(--border);
+      flex-shrink: 0;
+    }
+    .sidebar-head h1 {
+      font-size: 1.35rem;
+      font-weight: 800;
+      letter-spacing: -0.03em;
+      color: #fff;
+      line-height: 1;
+    }
+    .sidebar-head h1 span { color: var(--accent); }
+    .sidebar-head p {
+      margin-top: 4px;
+      font-size: 0.75rem;
+      color: var(--muted);
+      font-family: 'DM Mono', monospace;
+    }
+
+    .sidebar-body {
+      flex: 1;
+      overflow-y: auto;
+      padding: 14px 14px 0;
+      scrollbar-width: thin;
+      scrollbar-color: var(--border-strong) transparent;
+    }
+
+    .subject-card {
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 13px 12px;
+      margin-bottom: 10px;
+      transition: border-color 0.2s;
+    }
+    .subject-card:hover { border-color: var(--border-strong); }
+
+    .subject-label {
+      display: flex;
+      align-items: center;
+      gap: 7px;
+      font-size: 0.8rem;
+      font-weight: 700;
+      color: var(--text);
+      margin-bottom: 10px;
+    }
+    .dot { width: 9px; height: 9px; border-radius: 50%; flex-shrink: 0; }
+
+    .sections { display: flex; flex-direction: column; gap: 6px; }
+
+    .sec-btn {
+      display: flex;
+      flex-direction: column;
+      padding: 9px 10px;
+      border-radius: 7px;
+      border: 1.5px solid var(--border-strong);
+      background: transparent;
+      cursor: pointer;
+      text-align: left;
+      transition: all 0.18s;
+      color: var(--text);
+      font-family: inherit;
+    }
+    .sec-btn:hover { border-color: var(--accent); background: rgba(79,142,247,0.06); }
+    .sec-btn.selected { background: var(--accent); border-color: var(--accent); color: #fff; }
+    .sec-btn.conflict { border-color: var(--danger); background: var(--danger-bg); color: var(--danger); }
+
+    .sec-top { font-weight: 700; font-size: 0.78rem; }
+    .sec-times {
+      margin-top: 3px;
+      font-size: 0.68rem;
+      opacity: 0.75;
+      line-height: 1.4;
+      font-family: 'DM Mono', monospace;
+    }
+    .sec-btn.selected .sec-times { opacity: 0.85; }
+
+    .sidebar-foot {
+      flex-shrink: 0;
+      padding: 12px 14px 16px;
+      border-top: 1px solid var(--border);
+    }
+    #alert-box {
+      display: none;
+      background: var(--danger-bg);
+      border: 1px solid var(--danger);
+      color: var(--danger);
+      font-size: 0.75rem;
+      font-weight: 600;
+      padding: 9px 12px;
+      border-radius: 8px;
+      margin-bottom: 10px;
+      text-align: center;
+    }
+    .btn-reset {
+      width: 100%;
+      padding: 11px;
+      border-radius: 8px;
+      border: 1px solid var(--border-strong);
+      background: var(--surface2);
+      color: var(--muted);
+      font-family: inherit;
+      font-size: 0.8rem;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.18s;
+    }
+    .btn-reset:hover { background: var(--surface); color: var(--text); border-color: var(--accent); }
+
+    /* ── MAIN GRID ── */
+    #main {
+      flex: 1;
+      overflow: auto;
+      padding: 20px;
+      display: flex;
+      flex-direction: column;
+    }
+
+    .grid-wrapper {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      overflow: hidden;
+      flex-shrink: 0;
+    }
+
+    .cal-grid {
+      display: grid;
+      grid-template-columns: var(--col-time) repeat(5, 1fr);
+      /* header row + 32 slot rows */
+      grid-template-rows: var(--header-h) repeat(var(--slots), var(--row-h));
+      position: relative;
+    }
+
+    /* Header cells */
+    .ch {
+      display: flex; align-items: center; justify-content: center;
+      font-size: 0.65rem; font-weight: 700; letter-spacing: 0.08em;
+      text-transform: uppercase; color: var(--muted);
+      background: var(--surface2);
+      border-bottom: 1px solid var(--border);
+      position: sticky; top: 0; z-index: 20;
+    }
+    .ch:not(:last-child) { border-right: 1px solid var(--border); }
+
+    /* Time-label cells */
+    .tc {
+      display: flex; align-items: flex-start; justify-content: flex-end;
+      padding-right: 8px; padding-top: 1px;
+      font-size: 0.6rem; color: var(--muted);
+      font-family: 'DM Mono', monospace;
+      background: var(--surface2);
+      border-right: 1px solid var(--border);
+      /* span 2 rows for whole-hour labels */
+    }
+    /* background row stripes */
+    .bg-cell {
+      border-right: 1px solid var(--border);
+      border-bottom: 1px solid rgba(255,255,255,0.03);
+    }
+    .bg-cell.hour-line { border-bottom: 1px solid var(--border); }
+
+    /* ── CLASS BLOCKS ── */
+    .class-block {
+      border-radius: 7px;
+      padding: 5px 7px;
+      color: #fff;
+      display: flex;
+      flex-direction: column;
+      justify-content: flex-start;
+      z-index: 10;
+      overflow: hidden;
+      margin: 2px;
+      transition: filter 0.15s, transform 0.15s;
+      cursor: default;
+      position: relative;
+    }
+    .class-block::before {
+      content: '';
+      position: absolute;
+      inset: 0;
+      border-radius: inherit;
+      background: linear-gradient(160deg, rgba(255,255,255,0.12) 0%, transparent 60%);
+      pointer-events: none;
+    }
+    .class-block:hover { filter: brightness(1.12); transform: scale(1.01); }
+    .class-block.conflict {
+      background: var(--danger) !important;
+      animation: conflict-pulse 1.4s ease-in-out infinite;
+    }
+    @keyframes conflict-pulse {
+      0%, 100% { filter: brightness(1); }
+      50% { filter: brightness(1.2); }
+    }
+    .cb-name { font-weight: 800; font-size: 0.58rem; line-height: 1.1; letter-spacing: -0.01em; }
+    .cb-sec  { font-size: 0.52rem; opacity: 0.85; font-weight: 500; margin-top: 1px; }
+    .cb-time {
+      font-size: 0.5rem; font-family: 'DM Mono', monospace;
+      margin-top: auto; padding-top: 3px;
+      border-top: 1px solid rgba(255,255,255,0.2);
+      opacity: 0.8;
+    }
+  </style>
+</head>
+<body>
+
+<!-- SIDEBAR -->
+<aside id="sidebar" role="complementary" aria-label="Course sections">
+  <div class="sidebar-head">
+    <h1>FICH <span>2026</span></h1>
+    <p>1st Semester Schedule Planner</p>
+  </div>
+  <div class="sidebar-body" id="sidebar-body"></div>
+  <div class="sidebar-foot">
+    <div id="alert-box">⚠ Schedule conflict detected.</div>
+    <button class="btn-reset" onclick="resetAll()">Clear Schedule</button>
+  </div>
+</aside>
+
+<!-- MAIN CALENDAR -->
+<main id="main">
+  <div class="grid-wrapper">
+    <div class="cal-grid" id="calGrid"></div>
+  </div>
+</main>
+
+<script>
+/* ─── DATA ──────────────────────────────────────────────────── */
+const SUBJECTS = {
+  "English I": {
+    color: "#334155",
+    sections: {
+      "S1": [
+        { d:3, s:"10:30", e:"12:30", room:"TBD" },
+        { d:4, s:"10:30", e:"12:30", room:"TBD" }
+      ],
+      "S2": [
+        { d:2, s:"14:00", e:"16:00", room:"TBD" },
+        { d:5, s:"14:00", e:"16:00", room:"TBD" }
+      ]
+    }
+  },
+  "Programming Fundamentals": {
+    color: "#c2410c",
+    sections: {
+      "S1": [
+        { d:2, s:"08:00", e:"10:00", room:"Main Hall A" },
+        { d:5, s:"08:00", e:"12:00", room:"Lab I" }
+      ],
+      "S2": [
+        { d:2, s:"08:00", e:"10:00", room:"TBD" },
+        { d:5, s:"08:00", e:"12:00", room:"TBD" }
+      ],
+      "S3": [
+        { d:2, s:"10:00", e:"12:00", room:"Main Hall A" },
+        { d:5, s:"08:00", e:"12:00", room:"Lab III" }
+      ],
+      "S4": [
+        { d:2, s:"10:00", e:"12:00", room:"TBD" },
+        { d:4, s:"17:00", e:"21:00", room:"TBD" }
+      ],
+      "S5": [
+        { d:2, s:"10:00", e:"12:00", room:"TBD" },
+        { d:5, s:"13:00", e:"17:00", room:"Lab III" }
+      ],
+      "S6": [
+        { d:2, s:"13:00", e:"15:00", room:"TBD" },
+        { d:5, s:"13:00", e:"17:00", room:"Lab II" }
+      ],
+      "S7": [
+        { d:2, s:"13:00", e:"15:00", room:"Main Hall A" },
+        { d:5, s:"17:00", e:"21:00", room:"Lab I" }
+      ],
+      "S8": [
+        { d:2, s:"13:00", e:"15:00", room:"Main Hall A" },
+        { d:5, s:"17:00", e:"21:00", room:"Lab III" }
+      ]
+    }
+  },
+  "General Chemistry": {
+    color: "#065f46",
+    sections: {
+      "S1": [
+        { d:1, s:"09:00", e:"11:00", room:"TBD" },
+        { d:4, s:"19:00", e:"20:30", room:"TBD" }
+      ],
+      "S2": [
+        { d:1, s:"13:00", e:"15:00", room:"Room 3.1" },
+        { d:4, s:"19:00", e:"20:30", room:"TBD" }
+      ]
+    }
+  },
+  "Basic Mathematics": {
+    color: "#1d4ed8",
+    sections: {
+      "S1": [
+        { d:1, s:"18:30", e:"21:30", room:"Room 0.2" },
+        { d:3, s:"18:30", e:"21:30", room:"Room 0.2" }
+      ],
+      "S2": [
+        { d:1, s:"11:00", e:"14:00", room:"Room 0.3" },
+        { d:4, s:"08:00", e:"11:00", room:"Main Hall A" }
+      ],
+      "S3": [
+        { d:2, s:"08:30", e:"11:30", room:"TBD" },
+        { d:5, s:"08:30", e:"11:30", room:"Room 3.1" }
+      ],
+      "S4": [
+        { d:3, s:"09:00", e:"12:00", room:"TBD" },
+        { d:5, s:"09:00", e:"12:00", room:"Room 6 Cube" }
+      ],
+      "S5": [
+        { d:2, s:"13:00", e:"16:00", room:"Fluid Mech. Lab" },
+        { d:4, s:"14:00", e:"17:00", room:"Room 7 Cube" }
+      ],
+      "S6": [
+        { d:2, s:"08:00", e:"11:00", room:"TBD" },
+        { d:3, s:"13:00", e:"16:00", room:"Room 4 Cube" }
+      ]
+    }
+  }
+};
+
+const DAYS    = ["Monday","Tuesday","Wednesday","Thursday","Friday"];
+const DAY_ABR = ["Mon","Tue","Wed","Thu","Fri"];
+const GRID_START = 7;   // 07:00
+const SLOTS      = 32;  // 07:00 → 23:00
+
+/* ─── HELPERS ───────────────────────────────────────────────── */
+const toMin = s => { const [h,m] = s.split(':').map(Number); return h*60+m; };
+
+function slotOf(timeStr) {
+  return Math.round((toMin(timeStr) - GRID_START*60) / 30);
+}
+
+/* ─── BUILD SIDEBAR ─────────────────────────────────────────── */
+function buildSidebar() {
+  const body = document.getElementById('sidebar-body');
+  body.innerHTML = '';
+  Object.entries(SUBJECTS).forEach(([subj, data]) => {
+    const card = document.createElement('div');
+    card.className = 'subject-card';
+
+    const lbl = document.createElement('div');
+    lbl.className = 'subject-label';
+    lbl.innerHTML = `<span class="dot" style="background:${data.color}"></span>${subj}`;
+    card.appendChild(lbl);
+
+    const secs = document.createElement('div');
+    secs.className = 'sections';
+
+    Object.entries(data.sections).forEach(([secId, slots]) => {
+      const btn = document.createElement('button');
+      btn.className = 'sec-btn';
+      btn.dataset.subject = subj;
+      btn.dataset.section = secId;
+      btn.setAttribute('aria-label', `${subj} ${secId}`);
+
+      const timesText = slots.map(c => `${DAY_ABR[c.d-1]} ${c.s}–${c.e}`).join('  ·  ');
+      btn.innerHTML = `<span class="sec-top">Section ${secId}</span><span class="sec-times">${timesText}</span>`;
+      btn.addEventListener('click', () => toggleSection(subj, secId));
+      secs.appendChild(btn);
+    });
+
+    card.appendChild(secs);
+    body.appendChild(card);
+  });
+}
+
+/* ─── BUILD CALENDAR GRID ───────────────────────────────────── */
+function buildGrid() {
+  const grid = document.getElementById('calGrid');
+  grid.innerHTML = '';
+
+  // Header row
+  const corner = document.createElement('div');
+  corner.className = 'ch';
+  corner.textContent = 'TIME';
+  corner.style.gridColumn = '1';
+  corner.style.gridRow = '1';
+  grid.appendChild(corner);
+
+  DAYS.forEach((day, i) => {
+    const h = document.createElement('div');
+    h.className = 'ch';
+    h.textContent = day;
+    h.style.gridColumn = String(i + 2);
+    h.style.gridRow = '1';
+    grid.appendChild(h);
+  });
+
+  // Background + time-label cells
+  for (let s = 0; s < SLOTS; s++) {
+    const rowIndex = s + 2; // 1=header, 2=first slot
+    const totalMin = GRID_START*60 + s*30;
+    const h = Math.floor(totalMin/60);
+    const m = totalMin % 60;
+    const isHour = m === 0;
+    const label = isHour ? `${String(h).padStart(2,'0')}:00` : '';
+
+    const tc = document.createElement('div');
+    tc.className = 'tc';
+    tc.textContent = label;
+    tc.style.gridColumn = '1';
+    tc.style.gridRow = String(rowIndex);
+    grid.appendChild(tc);
+
+    for (let d = 1; d <= 5; d++) {
+      const cell = document.createElement('div');
+      cell.className = 'bg-cell' + (isHour ? ' hour-line' : '');
+      cell.style.gridColumn = String(d + 1);
+      cell.style.gridRow = String(rowIndex);
+      grid.appendChild(cell);
+    }
+  }
+}
+
+/* ─── STATE ─────────────────────────────────────────────────── */
+const selected = {}; // subject → sectionId
+
+function toggleSection(subj, secId) {
+  if (selected[subj] === secId) {
+    delete selected[subj];
+  } else {
+    selected[subj] = secId;
+  }
+  render();
+}
+
+function resetAll() {
+  Object.keys(selected).forEach(k => delete selected[k]);
+  render();
+}
+
+/* ─── RENDER ─────────────────────────────────────────────────── */
+function render() {
+  // Clear old blocks
+  document.querySelectorAll('.class-block').forEach(el => el.remove());
+  // Clear conflict states
+  document.querySelectorAll('.sec-btn').forEach(btn => {
+    btn.classList.remove('selected','conflict');
+  });
+  document.getElementById('alert-box').style.display = 'none';
+
+  // Build flat class list
+  const classes = [];
+  Object.entries(selected).forEach(([subj, secId]) => {
+    const data = SUBJECTS[subj];
+    data.sections[secId].forEach(slot => {
+      classes.push({
+        subj, secId,
+        day:   slot.d,
+        start: toMin(slot.s),
+        end:   toMin(slot.e),
+        room:  slot.room,
+        color: data.color,
+        st:    slot.s,
+        et:    slot.e,
+        conflict: false
+      });
+    });
+  });
+
+  // Detect conflicts
+  for (let i = 0; i < classes.length; i++) {
+    for (let j = i+1; j < classes.length; j++) {
+      const a = classes[i], b = classes[j];
+      if (a.day === b.day && a.start < b.end && a.end > b.start) {
+        a.conflict = b.conflict = true;
+      }
+    }
+  }
+
+  const hasConflict = classes.some(c => c.conflict);
+
+  // Update sidebar buttons
+  Object.entries(selected).forEach(([subj, secId]) => {
+    const hasThisConflict = classes.some(c => c.subj === subj && c.conflict);
+    const btn = document.querySelector(`.sec-btn[data-subject="${CSS.escape(subj)}"][data-section="${secId}"]`);
+    if (btn) btn.classList.add(hasThisConflict ? 'conflict' : 'selected');
+  });
+
+  if (hasConflict) {
+    document.getElementById('alert-box').style.display = 'block';
+  }
+
+  // Render blocks into grid
+  const grid = document.getElementById('calGrid');
+  classes.forEach(cl => {
+    const rowStart = slotOf(cl.st) + 2; // +2: row 1 = header
+    const rowEnd   = slotOf(cl.et) + 2;
+    const colStart = cl.day + 1;
+
+    const block = document.createElement('div');
+    block.className = 'class-block' + (cl.conflict ? ' conflict' : '');
+    if (!cl.conflict) block.style.background = cl.color;
+    block.style.gridColumn = String(colStart);
+    block.style.gridRow    = `${rowStart} / ${rowEnd}`;
+
+    block.innerHTML = `
+      <span class="cb-name">${cl.subj}</span>
+      <span class="cb-sec">Sec. ${cl.secId} · ${cl.room}</span>
+      <span class="cb-time">${cl.st}–${cl.et}</span>
+    `;
+    grid.appendChild(block);
+  });
+}
+
+/* ─── INIT ───────────────────────────────────────────────────── */
+buildSidebar();
+buildGrid();
+render();
+</script>
+</body>
+</html>
